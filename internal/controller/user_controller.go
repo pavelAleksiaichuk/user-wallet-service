@@ -16,22 +16,29 @@ func NewUserController(service *service.UserService) *UserController {
 	return &UserController{service: service}
 }
 
-// DTO для запроса
 type CreateUserRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type UserResponse struct {
+	ID    int    `json:"id"`
 	Email string `json:"email"`
 }
 
-// POST /users
-func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
-	var req CreateUserRequest
+func (c *UserController) RegisterUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
+	var req CreateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 
-	err = c.service.CreateUser(req.Email)
+	err := c.service.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -41,9 +48,34 @@ func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("user created"))
 }
 
-// GET /users?id=1
-func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {
+func (c *UserController) LoginUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
 
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "login - invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	user, err := c.service.Login(ctx, req.Email, req.Password)
+	if err != nil {
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Welcome, " + user.Email,
+	})
+}
+
+func (c *UserController) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -51,11 +83,20 @@ func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.service.GetUser(id)
+	ctx := r.Context()
+
+	user, err := c.service.GetUserByID(ctx, id)
 	if err != nil {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
 
-	json.NewEncoder(w).Encode(user)
+	resp := UserResponse{
+		ID:    user.ID,
+		Email: user.Email,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }

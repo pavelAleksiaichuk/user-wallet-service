@@ -1,35 +1,69 @@
 package repository
 
 import (
-	"userwalletservice/internal/infrastructure/database"
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
 	"userwalletservice/internal/model"
 
 	"github.com/jmoiron/sqlx"
+)
+
+var (
+	ErrUserNotFound       = errors.New("user not found")
+	ErrEmailAlreadyExists = errors.New("email already exists")
 )
 
 type UserRepository struct {
 	db *sqlx.DB
 }
 
-func NewUserRepository() *UserRepository {
-	return &UserRepository{
-		db: database.DB,
+func NewUserRepository(db *sqlx.DB) *UserRepository {
+	return &UserRepository{db: db}
+}
+
+func (r *UserRepository) Register(ctx context.Context, user *model.User) error {
+	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`
+
+	err := r.db.QueryRowxContext(ctx, query, user.Email, user.PasswordHash).Scan(&user.ID)
+	if err != nil {
+		return fmt.Errorf("register user: %w", err)
 	}
+
+	return nil
 }
 
-// CREATE
-func (r *UserRepository) Create(user model.User) error {
-	query := `INSERT INTO users (email) VALUES ($1)`
-	_, err := r.db.Exec(query, user.Email)
-	return err
+func (r *UserRepository) GetByID(ctx context.Context, id int) (*model.User, error) {
+	var user model.User
+	query := `SELECT id, email, password_hash FROM users WHERE id=$1`
+
+	err := r.db.GetContext(ctx, &user, query, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
+
+	return &user, nil
 }
 
-// GET BY ID
-func (r *UserRepository) GetByID(id int) (model.User, error) {
+func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	var user model.User
 
-	query := `SELECT id, email FROM users WHERE id=$1`
-	err := r.db.Get(&user, query, id)
+	query := `SELECT id, email, password_hash FROM users WHERE email=$1`
 
-	return user, err
+	err := r.db.GetContext(ctx, &user, query, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, fmt.Errorf("get user by email: %w", err)
+	}
+
+	return &user, nil
 }

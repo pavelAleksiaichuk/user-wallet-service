@@ -12,31 +12,24 @@ import (
 )
 
 func main() {
+	db, err := database.Connect()
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
 
-	// DB
-	database.Connect()
+	defer db.Close()
 
-	// DI
-	userRepo := repository.NewUserRepository()
+	userRepo := repository.NewUserRepository(db)
 	userService := service.NewUserService(userRepo)
 	userController := controller.NewUserController(userService)
 
-	http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
-
-		switch r.Method {
-
-		case http.MethodPost:
-			userController.CreateUser(w, r)
-
-		case http.MethodGet:
-			userController.GetUser(w, r)
-
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
+	http.HandleFunc("/auth/register", userController.RegisterUser)
+	http.HandleFunc("/auth/login", userController.LoginUser)
+	http.HandleFunc("/user", userController.GetUserByID)
 
 	fmt.Println("🚀 Server started on :8080")
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("server failed to start: %v", err)
+	}
 }

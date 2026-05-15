@@ -2,7 +2,6 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -10,39 +9,41 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var DB *sqlx.DB
+func Connect() (*sqlx.DB, error) {
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	name := os.Getenv("DB_NAME")
 
-func Connect() {
-
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host,
+		port,
+		user,
+		password,
+		name,
 	)
 
 	var db *sqlx.DB
 	var err error
 
 	// 🔥 retry logic
-	for i := 0; i < 10; i++ {
-
+	for i := range 10 {
 		db, err = sqlx.Connect("postgres", dsn)
 		if err == nil {
-
 			err = db.Ping()
 			if err == nil {
-				DB = db
 				fmt.Println("✅ PostgreSQL connected")
-				return
+				db.SetMaxOpenConns(25)
+				db.SetMaxIdleConns(25)
+
+				return db, nil
 			}
 		}
 
-		fmt.Println("⏳ DB not ready, retrying... attempt:", i+1)
+		fmt.Printf("⏳ DB not ready (%v), retrying... attempt: %d\n", err, i+1)
 		time.Sleep(2 * time.Second)
 	}
 
-	log.Fatal("❌ DB connection failed after retries:", err)
+	return nil, fmt.Errorf("❌ DB connection failed after 10 retries: %w", err)
 }
