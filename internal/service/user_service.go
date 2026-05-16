@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"strings"
-
-	"golang.org/x/crypto/bcrypt"
-
+	"userwalletservice/internal/infrastructure"
 	"userwalletservice/internal/model"
 	"userwalletservice/internal/repository"
+	
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -20,11 +20,15 @@ var (
 )
 
 type UserService struct {
-	repo *repository.UserRepository
+	repo 				*repository.UserRepository
+	jwtManager 	*infrastructure.JWTManager
 }
 
-func NewUserService(repo *repository.UserRepository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repo *repository.UserRepository, jwtManager *infrastructure.JWTManager) *UserService {
+	return &UserService{
+		repo: repo,
+		jwtManager: jwtManager,
+	}
 }
 
 func (s *UserService) Register(ctx context.Context, email, password string) error {
@@ -47,20 +51,25 @@ func (s *UserService) Register(ctx context.Context, email, password string) erro
 	return s.repo.Register(ctx, &user)
 }
 
-func (s *UserService) Login(ctx context.Context, email, password string) (*model.User, error) {
+func (s *UserService) Login(ctx context.Context, email, password string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 
-	return user, nil
+	token, err := s.jwtManager.GenerateToken(user.ID)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, id int) (*model.User, error) {

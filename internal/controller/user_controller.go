@@ -3,9 +3,8 @@ package controller
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
-
 	"userwalletservice/internal/service"
+	"userwalletservice/internal/model"
 )
 
 type UserController struct {
@@ -27,11 +26,6 @@ type UserResponse struct {
 }
 
 func (c *UserController) RegisterUser(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -61,7 +55,7 @@ func (c *UserController) LoginUser(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	user, err := c.service.Login(ctx, req.Email, req.Password)
+	token, err := c.service.Login(ctx, req.Email, req.Password)
 	if err != nil {
 		http.Error(w, "invalid email or password", http.StatusUnauthorized)
 		return
@@ -69,23 +63,23 @@ func (c *UserController) LoginUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
 	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "success",
-		"message": "Welcome, " + user.Email,
+		"status": "success",
+		"token":  token,
 	})
 }
 
-func (c *UserController) GetUserByID(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+func (c *UserController) GetProfile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID, ok := ctx.Value(model.UserIDKey).(int)
+	if !ok {
+		http.Error(w, "unathorized", http.StatusUnauthorized)
 		return
 	}
 
-	ctx := r.Context()
-
-	user, err := c.service.GetUserByID(ctx, id)
+	user, err := c.service.GetUserByID(ctx, userID)
 	if err != nil {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
@@ -98,5 +92,6 @@ func (c *UserController) GetUserByID(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
 	json.NewEncoder(w).Encode(resp)
 }
