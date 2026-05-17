@@ -1,12 +1,12 @@
-package service
+package user
 
 import (
 	"context"
 	"errors"
 	"strings"
-	"userwalletservice/internal/infrastructure"
-	"userwalletservice/internal/model"
-	"userwalletservice/internal/repository"
+	"userwalletservice/internal/infrastructure/jwt"
+	userModel "userwalletservice/internal/model/user"
+	userRepo "userwalletservice/internal/repository/user"
 	
 	"golang.org/x/crypto/bcrypt"
 )
@@ -20,11 +20,11 @@ var (
 )
 
 type UserService struct {
-	repo 				*repository.UserRepository
-	jwtManager 	*infrastructure.JWTManager
+	repo 				*userRepo.UserRepository
+	jwtManager 	*jwt.JWTManager
 }
 
-func NewUserService(repo *repository.UserRepository, jwtManager *infrastructure.JWTManager) *UserService {
+func New(repo *userRepo.UserRepository, jwtManager *jwt.JWTManager) *UserService {
 	return &UserService{
 		repo: repo,
 		jwtManager: jwtManager,
@@ -43,7 +43,7 @@ func (s *UserService) Register(ctx context.Context, email, password string) erro
 		return err
 	}
 
-	user := model.User{
+	user := userModel.User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 	}
@@ -72,7 +72,7 @@ func (s *UserService) Login(ctx context.Context, email, password string) (string
 	return token, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, id int) (*model.User, error) {
+func (s *UserService) GetUserByID(ctx context.Context, id int) (*userModel.User, error) {
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err

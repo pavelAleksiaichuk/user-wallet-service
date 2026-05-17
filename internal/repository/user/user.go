@@ -1,12 +1,11 @@
-package repository
+package user
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"userwalletservice/internal/model"
+	userModel "userwalletservice/internal/model/user"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -20,11 +19,11 @@ type UserRepository struct {
 	db *sqlx.DB
 }
 
-func NewUserRepository(db *sqlx.DB) *UserRepository {
+func New(db *sqlx.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-func (r *UserRepository) Register(ctx context.Context, user *model.User) error {
+func (r *UserRepository) Register(ctx context.Context, user *userModel.User) error {
 	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`
 
 	err := r.db.QueryRowxContext(ctx, query, user.Email, user.PasswordHash).Scan(&user.ID)
@@ -35,8 +34,8 @@ func (r *UserRepository) Register(ctx context.Context, user *model.User) error {
 	return nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id int) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetByID(ctx context.Context, id int) (*userModel.User, error) {
+	var user userModel.User
 	query := `SELECT id, email, password_hash FROM users WHERE id=$1`
 
 	err := r.db.GetContext(ctx, &user, query, id)
@@ -51,8 +50,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id int) (*model.User, erro
 	return &user, nil
 }
 
-func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*userModel.User, error) {
+	var user userModel.User
 
 	query := `SELECT id, email, password_hash FROM users WHERE email=$1`
 

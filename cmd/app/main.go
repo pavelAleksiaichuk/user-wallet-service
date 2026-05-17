@@ -3,13 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
-
-	"userwalletservice/internal/controller"
-	"userwalletservice/internal/infrastructure" // Для JWTManager
 	"userwalletservice/internal/infrastructure/database"
-	"userwalletservice/internal/repository"
-	"userwalletservice/internal/router" // Для роутера и мидлвара
-	"userwalletservice/internal/service"
+	"userwalletservice/internal/infrastructure/jwt"
+	"userwalletservice/internal/router/middleware"
+	"userwalletservice/internal/router"
+	userRepo "userwalletservice/internal/repository/user"
+	userServ "userwalletservice/internal/service/user"
+	userCtrl "userwalletservice/internal/controller/user"
 )
 
 func main() {
@@ -22,18 +22,18 @@ func main() {
 
 	// 2. Инициализируем JWT Менеджер (пока хардкодим ключ, потом вынесешь в конфиг)
 	jwtSecret := "super-secret-wallet-key-2026"
-	jwtManager := infrastructure.NewJWTManager(jwtSecret)
+	jwtManager := jwt.New(jwtSecret)
 
 	// 3. Собираем слой репозиториев и сервисов (передаем jwtManager в UserService)
-	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo, jwtManager)
+	userRepository := userRepo.New(db)
+	userService := userServ.New(userRepository, jwtManager)
 
 	// 4. Собираем слой контроллеров и мидлваров
-	userController := controller.NewUserController(userService)
-	authMiddleware := router.NewAuthMiddleware(jwtManager)
+	userController := userCtrl.New(userService)
+	authMiddleware := middleware.New(jwtManager)
 
 	// 5. Инициализируем роутер gorilla/mux и настраиваем маршруты
-	r := router.NewRouter(userController, authMiddleware)
+	r := router.New(userController, authMiddleware)
 	muxRouter := r.InitRoutes() // Это вернет нам настроенный *mux.Router
 
 	log.Println("🚀 Server started on :8080")

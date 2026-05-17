@@ -1,4 +1,4 @@
-package infrastructure
+package jwt
 
 import (
 	"errors"
@@ -22,7 +22,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func NewJWTManager(secret string) *JWTManager {
+func New(secret string) *JWTManager {
 	return &JWTManager{
 		secretKey: []byte(secret),
 		issuer:    "userwalletservice",

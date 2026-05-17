@@ -1,19 +1,20 @@
 package router
 
 import (
-	"userwalletservice/internal/controller"
+	userCntrl "userwalletservice/internal/controller/user"
+	"userwalletservice/internal/router/middleware"
 
 	"github.com/gorilla/mux"
 )
 
 type Router struct {
-	userCtrl *controller.UserController
-	authMid  *AuthMiddleware
+	userController *userCntrl.UserController
+	authMid  *middleware.AuthMiddleware
 }
 
-func NewRouter(userCtrl *controller.UserController, authMid *AuthMiddleware) *Router {
+func New(userController *userCntrl.UserController, authMid *middleware.AuthMiddleware) *Router {
 	return &Router{
-		userCtrl: userCtrl,
+		userController: userController,
 		authMid:  authMid,
 	}
 }
@@ -31,8 +32,8 @@ func (r *Router) InitRoutes() *mux.Router {
 	// 1. ПУБЛИЧНЫЕ РОУТЫ (Группа /api/v1/auth)
 	// ==========================================
 	authPublic := v1.PathPrefix("/auth").Subrouter()
-	authPublic.HandleFunc("/register", r.userCtrl.RegisterUser).Methods("POST")
-	authPublic.HandleFunc("/login", r.userCtrl.LoginUser).Methods("POST")
+	authPublic.HandleFunc("/register", r.userController.RegisterUser).Methods("POST")
+	authPublic.HandleFunc("/login", r.userController.LoginUser).Methods("POST")
 
 	// ==========================================
 	// 2. ЗАЩИЩЕННЫЕ РОУТЫ (Группа /api/v1/auth)
@@ -44,7 +45,7 @@ func (r *Router) InitRoutes() *mux.Router {
 	authProtected.Use(r.authMid.Handler) 
 	
 	// URL будет: /api/v1/auth/profile. И никаких ручных оберток!
-	authProtected.HandleFunc("/profile", r.userCtrl.GetProfile).Methods("GET")
+	authProtected.HandleFunc("/profile", r.userController.GetProfile).Methods("GET")
 
 	// ==========================================
 	// ПРИМЕР НА БУДУЩЕЕ: Роуты кошелька

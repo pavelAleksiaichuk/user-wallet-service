@@ -1,18 +1,18 @@
-package router
+package middleware
 
 import (
 	"context"
 	"net/http"
 	"strings"
-	"userwalletservice/internal/infrastructure"
-	"userwalletservice/internal/model"
+	"userwalletservice/internal/infrastructure/jwt"
+	contextModel "userwalletservice/internal/model/context"
 )
 
 type AuthMiddleware struct {
-	jwtManager *infrastructure.JWTManager
+	jwtManager *jwt.JWTManager
 }
 
-func NewAuthMiddleware(jwtManager *infrastructure.JWTManager) *AuthMiddleware {
+func New(jwtManager *jwt.JWTManager) *AuthMiddleware {
 	return &AuthMiddleware{jwtManager: jwtManager}
 }
 
@@ -43,7 +43,7 @@ func (m *AuthMiddleware) Handler(next http.Handler) http.Handler {
 		}
 
 		// 4. Записываем UserID в контекст запроса, чтобы контроллеры кошелька знали, кто делает запрос
-		ctx := context.WithValue(r.Context(), model.UserIDKey, claims.UserID)
+		ctx := context.WithValue(r.Context(), contextModel.UserIDKey, claims.UserID)
 		
 		// 5. Передаем запрос дальше по цепочке
 		next.ServeHTTP(w, r.WithContext(ctx))
