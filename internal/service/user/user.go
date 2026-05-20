@@ -6,8 +6,11 @@ import (
 	"strings"
 	"userwalletservice/internal/infrastructure/jwt"
 	userModel "userwalletservice/internal/model/user"
+	"userwalletservice/internal/model/wallet"
+	walletModel "userwalletservice/internal/model/wallet"
 	userRepo "userwalletservice/internal/repository/user"
-	
+	walletRepo "userwalletservice/internal/repository/wallet"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,14 +23,16 @@ var (
 )
 
 type UserService struct {
-	repo 				*userRepo.UserRepository
-	jwtManager 	*jwt.JWTManager
+	repo       *userRepo.UserRepository
+	jwtManager *jwt.JWTManager
+	walletRepo walletRepo.Repository
 }
 
-func New(repo *userRepo.UserRepository, jwtManager *jwt.JWTManager) *UserService {
+func New(repo *userRepo.UserRepository, jwtManager *jwt.JWTManager, wRepo walletRepo.Repository) *UserService {
 	return &UserService{
-		repo: repo,
+		repo:       repo,
 		jwtManager: jwtManager,
+		walletRepo: wRepo,
 	}
 }
 
@@ -48,7 +53,17 @@ func (s *UserService) Register(ctx context.Context, email, password string) erro
 		PasswordHash: hashedPassword,
 	}
 
-	return s.repo.Register(ctx, &user)
+	// Сначала регистрируем пользователя в базе
+	if err := s.repo.Register(ctx, &user); err != nil {
+		return err
+	}
+
+	if err := s.walletRepo.Create(ctx, user.ID); err != nil {
+		// Если кошелек не создался, возвращаем ошибку
+		return err
+	}
+
+	return nil
 }
 
 func (s *UserService) Login(ctx context.Context, email, password string) (string, error) {
@@ -108,4 +123,49 @@ func validateRegisterInput(email, password string) error {
 	}
 
 	return nil
+}
+
+func (s *UserService) GetWalletByUserID(ctx context.Context, userID int) (*walletModel.Wallet, error) {
+	// Здесь нам тоже нужен импорт моделей кошелька!
+	// Добавь в импорты этого файла (user.go) строчку:
+	// walletModel "userwalletservice/internal/model/wallet"
+
+	wallet, err := s.walletRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return wallet, nil
+}
+
+func (s *UserService) Deposit(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error) {
+	// Валидация: фронтенд не должен прислать отрицательную сумму или ноль
+	if amount <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
+
+	// Вызываем репозиторий.
+	// Посмотри, как в твоем сервисе называется поле репозитория кошелька
+	// (например, s.walletRepo или s.userRepo, если метод Deposit лежит там же)
+	return s.walletRepo.Deposit(ctx, userID, amount)
+}
+
+func (s *UserService) Withdraw(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error) {
+	if amount <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
+
+	return s.walletRepo.Withdraw(ctx, userID, amount)
+}
+
+func (s *UserService) Transfer(ctx context.Context, fromUserID int, toUserID int, amount float64) error {
+	if amount <= 0 {
+		return errors.New("amount must be greater than zero")
+	}
+
+	if fromUserID == toUserID {
+		return errors.New("cannot transfer money to yourself")
+	}
+
+	return s.walletRepo.Transfer(ctx, fromUserID, toUserID, amount)
 }

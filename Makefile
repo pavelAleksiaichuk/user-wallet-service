@@ -7,3 +7,9 @@ start:
 
 intro_bd:
 	docker exec -it postgres_db psql -U postgres -d app_db
+
+start only db:
+	docker compose up -d --build db
+
+start migration:
+docker compose up -d --build db migrate
