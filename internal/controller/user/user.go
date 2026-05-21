@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	contextModel "userwalletservice/internal/model/context"
-	userServ "userwalletservice/internal/service/user"
+	userService "userwalletservice/internal/service/user"
 )
 
 type Controller struct {
-	userService *userServ.Service
+	userService *userService.Service
 }
 
-func New(userService *userServ.Service) *Controller {
+func New(userService *userService.Service) *Controller {
 	return &Controller{userService: userService}
 }
 

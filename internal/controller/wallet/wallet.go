@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	contextModel "userwalletservice/internal/model/context"
-	walletServ "userwalletservice/internal/service/wallet"
+	walletService "userwalletservice/internal/service/wallet"
 )
 
 type Controller struct {
 	// Нам нужен доступ к сервису пользователей, чтобы вызывать методы кошелька
-	walletService *walletServ.Service
+	walletService *walletService.Service
 }
 
 type WithdrawRequest struct {
@@ -21,7 +21,7 @@ type TransferRequest struct {
 	Amount   float64 `json:"amount"`
 }
 
-func New(walletService *walletServ.Service) *Controller {
+func New(walletService *walletService.Service) *Controller {
 	return &Controller{
 		walletService: walletService,
 	}

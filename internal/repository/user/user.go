@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	userModel "userwalletservice/internal/model/user"
-	walletRepo "userwalletservice/internal/repository/wallet"
+	walletRepository "userwalletservice/internal/repository/wallet"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -25,7 +25,7 @@ func New(db *sqlx.DB) *Repository {
 }
 
 // 🔥 Теперь метод принимает интерфейс репозитория кошелька
-func (r *Repository) Register(ctx context.Context, user *userModel.User, wRepo walletRepo.Repository) error {
+func (r *Repository) Register(ctx context.Context, user *userModel.User, walletRepository walletRepository.Repository) error {
 	// 1. Открываем транзакцию через sqlx
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -44,7 +44,7 @@ func (r *Repository) Register(ctx context.Context, user *userModel.User, wRepo w
 
 	// 4. Создаем кошелек для пользователя в рамках ЭТОЙ ЖЕ транзакции
 	// Передаем tx в новый метод CreateTx
-	if err := wRepo.CreateTx(ctx, tx, user.ID); err != nil {
+	if err := walletRepository.CreateTx(ctx, tx, user.ID); err != nil {
 		return fmt.Errorf("register user wallet create: %w", err)
 	}
 

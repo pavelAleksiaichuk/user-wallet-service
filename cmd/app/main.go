@@ -16,14 +16,16 @@ import (
 	"userwalletservice/internal/router/middleware"
 
 	// Слой репозиториев
-	userRepo "userwalletservice/internal/repository/user"
-	walletRepo "userwalletservice/internal/repository/wallet"
+	userRepository "userwalletservice/internal/repository/user"
+	walletRepository "userwalletservice/internal/repository/wallet"
 
-	// Слой сервисов и контроллеров
-	userCtrl "userwalletservice/internal/controller/user"
-	walletCtrl "userwalletservice/internal/controller/wallet"
-	userServ "userwalletservice/internal/service/user"
-	walletServ "userwalletservice/internal/service/wallet"
+	// Слой контроллеров
+	userController "userwalletservice/internal/controller/user"
+	walletController "userwalletservice/internal/controller/wallet"
+
+	// Слой сервисов
+	userService "userwalletservice/internal/service/user"
+	walletService "userwalletservice/internal/service/wallet"
 )
 
 func main() {
@@ -38,16 +40,16 @@ func main() {
 	jwtManager := jwt.New(jwtSecret)
 
 	// 3. Собираем слой репозиториев и сервисов
-	userRepository := userRepo.New(db)
-	walletRepository := walletRepo.New(db)
+	userRepository := userRepository.New(db)
+	walletRepository := walletRepository.New(db)
 
 	// 🔥 3. Передаем walletRepository третьим аргументом в конструктор сервиса
-	userService := userServ.New(userRepository, jwtManager, walletRepository)
-	walletService := walletServ.New(walletRepository)
+	userService := userService.New(userRepository, jwtManager, walletRepository)
+	walletService := walletService.New(walletRepository)
 
 	// 4. Собираем слой контроллеров и мидлваров
-	userController := userCtrl.New(userService)
-	walletController := walletCtrl.New(walletService)
+	userController := userController.New(userService)
+	walletController := walletController.New(walletService)
 	authMiddleware := middleware.New(jwtManager)
 
 	// 5. Инициализируем роутер gorilla/mux и настраиваем маршруты

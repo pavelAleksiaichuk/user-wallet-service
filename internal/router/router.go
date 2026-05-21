@@ -1,8 +1,8 @@
 package router
 
 import (
-	userCntrl "userwalletservice/internal/controller/user"
-	walletCntrl "userwalletservice/internal/controller/wallet"
+	userController "userwalletservice/internal/controller/user"
+	walletController "userwalletservice/internal/controller/wallet"
 	"userwalletservice/internal/router/middleware"
 
 	"github.com/gorilla/mux"
@@ -21,7 +21,7 @@ func New(authMid *middleware.AuthMiddleware) *Router {
 }
 
 // 2. InitRoutes теперь принимает контроллеры на лету
-func (r *Router) InitRoutes(userController *userCntrl.Controller, walletController *walletCntrl.Controller) *mux.Router {
+func (r *Router) InitRoutes(userController *userController.Controller, walletController *walletController.Controller) *mux.Router {
 	// Как и в твоем старом коде — создаем базовый роутер прямо здесь
 	mainRouter := mux.NewRouter()
 
@@ -40,14 +40,14 @@ func (r *Router) InitRoutes(userController *userCntrl.Controller, walletControll
 }
 
 // 3. Функция для сущности User
-func (r *Router) NewUser(public *mux.Router, protected *mux.Router, c *userCntrl.Controller) {
+func (r *Router) NewUser(public *mux.Router, protected *mux.Router, c *userController.Controller) {
 	public.HandleFunc("/auth/register", c.RegisterUser).Methods("POST")
 	public.HandleFunc("/auth/login", c.LoginUser).Methods("POST")
 	protected.HandleFunc("/auth/profile", c.GetProfile).Methods("GET")
 }
 
 // 4. Функция для сущности Wallet
-func (r *Router) NewWallet(protected *mux.Router, c *walletCntrl.Controller) {
+func (r *Router) NewWallet(protected *mux.Router, c *walletController.Controller) {
 	protected.HandleFunc("/account/balance", c.GetBalance).Methods("GET")
 	protected.HandleFunc("/account/deposit", c.Deposit).Methods("POST")
 	protected.HandleFunc("/account/withdraw", c.Withdraw).Methods("POST")

@@ -7,8 +7,8 @@ import (
 
 	"userwalletservice/internal/infrastructure/jwt"
 	userModel "userwalletservice/internal/model/user"
-	userRepo "userwalletservice/internal/repository/user"
-	walletRepo "userwalletservice/internal/repository/wallet"
+	userRepository "userwalletservice/internal/repository/user"
+	walletRepository "userwalletservice/internal/repository/wallet"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -18,16 +18,16 @@ var (
 )
 
 type Service struct {
-	repo       *userRepo.Repository
-	jwtManager *jwt.JWTManager
-	walletRepo walletRepo.Repository // Оставляем только для транзакции в Register
+	repo             *userRepository.Repository
+	jwtManager       *jwt.JWTManager
+	walletRepository walletRepository.Repository // Оставляем только для транзакции в Register
 }
 
-func New(repo *userRepo.Repository, jwtManager *jwt.JWTManager, wRepo walletRepo.Repository) *Service {
+func New(repo *userRepository.Repository, jwtManager *jwt.JWTManager, walletRepository walletRepository.Repository) *Service {
 	return &Service{
-		repo:       repo,
-		jwtManager: jwtManager,
-		walletRepo: wRepo,
+		repo:             repo,
+		jwtManager:       jwtManager,
+		walletRepository: walletRepository,
 	}
 }
 
@@ -48,7 +48,7 @@ func (s *Service) Register(ctx context.Context, email, password string) error {
 	}
 	user.PasswordHash = hashedPassword
 
-	if err := s.repo.Register(ctx, &user, s.walletRepo); err != nil {
+	if err := s.repo.Register(ctx, &user, s.walletRepository); err != nil {
 		return err
 	}
 
