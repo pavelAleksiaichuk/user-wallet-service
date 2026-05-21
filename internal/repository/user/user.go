@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	userModel "userwalletservice/internal/model/user"
+	walletRepo "userwalletservice/internal/repository/wallet"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -15,26 +16,47 @@ var (
 	ErrEmailAlreadyExists = errors.New("email already exists")
 )
 
-type UserRepository struct {
+type Repository struct {
 	db *sqlx.DB
 }
 
-func New(db *sqlx.DB) *UserRepository {
-	return &UserRepository{db: db}
+func New(db *sqlx.DB) *Repository {
+	return &Repository{db: db}
 }
 
-func (r *UserRepository) Register(ctx context.Context, user *userModel.User) error {
-	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`
-
-	err := r.db.QueryRowxContext(ctx, query, user.Email, user.PasswordHash).Scan(&user.ID)
+// 🔥 Теперь метод принимает интерфейс репозитория кошелька
+func (r *Repository) Register(ctx context.Context, user *userModel.User, wRepo walletRepo.Repository) error {
+	// 1. Открываем транзакцию через sqlx
+	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("register user: %w", err)
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+
+	// 2. Гарантируем откат в случае паники или ошибки
+	defer tx.Rollback()
+
+	// 3. Сохраняем пользователя, выполняя запрос СТРОГО через транзакцию tx, а не через r.db
+	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id`
+	err = tx.QueryRowxContext(ctx, query, user.Email, user.PasswordHash).Scan(&user.ID)
+	if err != nil {
+		return fmt.Errorf("register user insert: %w", err)
+	}
+
+	// 4. Создаем кошелек для пользователя в рамках ЭТОЙ ЖЕ транзакции
+	// Передаем tx в новый метод CreateTx
+	if err := wRepo.CreateTx(ctx, tx, user.ID); err != nil {
+		return fmt.Errorf("register user wallet create: %w", err)
+	}
+
+	// 5. Если всё прошло успешно — фиксируем изменения в БД
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id int) (*userModel.User, error) {
+func (r *Repository) GetByID(ctx context.Context, id int) (*userModel.User, error) {
 	var user userModel.User
 	query := `SELECT id, email, password_hash FROM users WHERE id=$1`
 
@@ -43,16 +65,14 @@ func (r *UserRepository) GetByID(ctx context.Context, id int) (*userModel.User, 
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
-
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
 
 	return &user, nil
 }
 
-func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*userModel.User, error) {
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*userModel.User, error) {
 	var user userModel.User
-
 	query := `SELECT id, email, password_hash FROM users WHERE email=$1`
 
 	err := r.db.GetContext(ctx, &user, query, email)
@@ -60,7 +80,6 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*use
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
-
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
 

@@ -10,50 +10,49 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Repository описывает контракты (методы) для работы с БД
 type Repository interface {
 	Create(ctx context.Context, userID int) error
+	CreateTx(ctx context.Context, tx *sqlx.Tx, userID int) error // 🔥 ДОБАВИЛИ В ИНТЕРФЕЙС
 	GetByUserID(ctx context.Context, userID int) (*wallet.Wallet, error)
 	Deposit(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error)
 	Withdraw(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error)
 	Transfer(ctx context.Context, fromUserID int, toUserID int, amount float64) error
 }
 
-// WalletRepository реализует интерфейс с использованием sqlx
 type WalletRepository struct {
-	db *sqlx.DB // 🔥 Вот наш красавец sqlx.DB вместо обычного sql.DB
+	db *sqlx.DB
 }
 
-// New — конструктор репозитория
 func New(db *sqlx.DB) *WalletRepository {
 	return &WalletRepository{db: db}
 }
 
-// Create создает пустой кошелек для нового пользователя
+// CreateTx — реализация для работы внутри транзакции
+func (r *WalletRepository) CreateTx(ctx context.Context, tx *sqlx.Tx, userID int) error {
+	query := `
+		INSERT INTO wallets (user_id, balance, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
+	`
+	now := time.Now()
+	_, err := tx.ExecContext(ctx, query, userID, 0.0, now, now)
+	return err
+}
+
+// Твой метод Create оставим, он полезен для тестов или отдельных вызовов
 func (r *WalletRepository) Create(ctx context.Context, userID int) error {
-	// Используем именованные плейсхолдеры (:user_id, :balance...), это фишка sqlx
 	query := `
 		INSERT INTO wallets (user_id, balance, created_at, updated_at)
 		VALUES (:user_id, :balance, :created_at, :updated_at)
 	`
-
 	now := time.Now()
-
-	// Передаем данные в виде обычной map. sqlx сам сопоставит ключи с двоеточиями в SQL
 	data := map[string]interface{}{
 		"user_id":    userID,
 		"balance":    0.00,
 		"created_at": now,
 		"updated_at": now,
 	}
-
-	// NamedExecContext сам подготовит запрос и безопасно вставит данные
 	_, err := r.db.NamedExecContext(ctx, query, data)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // GetByUserID находит кошелек по ID пользователя

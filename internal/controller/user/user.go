@@ -3,16 +3,16 @@ package user
 import (
 	"encoding/json"
 	"net/http"
-	userServ "userwalletservice/internal/service/user"
 	contextModel "userwalletservice/internal/model/context"
+	userServ "userwalletservice/internal/service/user"
 )
 
-type UserController struct {
-	userService *userServ.UserService
+type Controller struct {
+	userService *userServ.Service
 }
 
-func New(userService *userServ.UserService) *UserController {
-	return &UserController{userService: userService}
+func New(userService *userServ.Service) *Controller {
+	return &Controller{userService: userService}
 }
 
 type CreateUserRequest struct {
@@ -25,7 +25,7 @@ type UserResponse struct {
 	Email string `json:"email"`
 }
 
-func (c *UserController) RegisterUser(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -42,7 +42,7 @@ func (c *UserController) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("user created"))
 }
 
-func (c *UserController) LoginUser(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) LoginUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -70,7 +70,7 @@ func (c *UserController) LoginUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (c *UserController) GetProfile(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) GetProfile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	userID, ok := ctx.Value(contextModel.UserIDKey).(int)

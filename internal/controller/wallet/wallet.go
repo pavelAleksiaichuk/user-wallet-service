@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	contextModel "userwalletservice/internal/model/context"
-	userServ "userwalletservice/internal/service/user"
+	walletServ "userwalletservice/internal/service/wallet"
 )
 
-type WalletController struct {
+type Controller struct {
 	// Нам нужен доступ к сервису пользователей, чтобы вызывать методы кошелька
-	userService *userServ.UserService
+	walletService *walletServ.Service
 }
 
 type WithdrawRequest struct {
@@ -21,14 +21,14 @@ type TransferRequest struct {
 	Amount   float64 `json:"amount"`
 }
 
-func New(userService *userServ.UserService) *WalletController {
-	return &WalletController{
-		userService: userService,
+func New(walletService *walletServ.Service) *Controller {
+	return &Controller{
+		walletService: walletService,
 	}
 }
 
 // GetBalance обрабатывает запрос на получение баланса кошелька
-func (c *WalletController) GetBalance(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) GetBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// 1. Извлекаем userID, который наш мидлвар (AuthMiddleware) бережно достал из JWT
@@ -41,8 +41,8 @@ func (c *WalletController) GetBalance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Внимание! Нам нужен метод в сервисе, который умеет получать кошелек по userID.
-	// Прямо СЕЙЧАС у нас такого метода в UserService еще нет. Мы напишем его следующим шагом!
-	wallet, err := c.userService.GetWalletByUserID(r.Context(), userID)
+	// Прямо СЕЙЧАС у нас такого метода в walletService еще нет. Мы напишем его следующим шагом!
+	wallet, err := c.walletService.GetWalletByUserID(r.Context(), userID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -64,7 +64,7 @@ func (c *WalletController) GetBalance(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (c *WalletController) Deposit(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) Deposit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// 1. Достаем userID из контекста (наш проверенный ключ)
@@ -84,7 +84,7 @@ func (c *WalletController) Deposit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Вызываем сервис
-	wallet, err := c.userService.Deposit(r.Context(), userID, req.Amount) // Сделай вызов под свою структуру сервиса
+	wallet, err := c.walletService.Deposit(r.Context(), userID, req.Amount) // Сделай вызов под свою структуру сервиса
 	if err != nil {
 		// Если ошибка валидации — отдаем 400, если базы — 500
 		if err.Error() == "amount must be greater than zero" {
@@ -109,7 +109,7 @@ func (c *WalletController) Deposit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (c *WalletController) Withdraw(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) Withdraw(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	userID, ok := r.Context().Value(contextModel.UserIDKey).(int)
@@ -126,7 +126,7 @@ func (c *WalletController) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wallet, err := c.userService.Withdraw(r.Context(), userID, req.Amount)
+	wallet, err := c.walletService.Withdraw(r.Context(), userID, req.Amount)
 	if err != nil {
 		if err.Error() == "amount must be greater than zero" || err.Error() == "insufficient funds or wallet not found" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -150,7 +150,7 @@ func (c *WalletController) Withdraw(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (c *WalletController) Transfer(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) Transfer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	fromUserID, ok := r.Context().Value(contextModel.UserIDKey).(int)
@@ -167,7 +167,7 @@ func (c *WalletController) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := c.userService.Transfer(r.Context(), fromUserID, req.ToUserID, req.Amount)
+	err := c.walletService.Transfer(r.Context(), fromUserID, req.ToUserID, req.Amount)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

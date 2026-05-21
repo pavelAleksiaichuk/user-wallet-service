@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"userwalletservice/internal/infrastructure/database"
 	"userwalletservice/internal/infrastructure/jwt"
 	"userwalletservice/internal/router"
@@ -16,6 +23,7 @@ import (
 	userCtrl "userwalletservice/internal/controller/user"
 	walletCtrl "userwalletservice/internal/controller/wallet"
 	userServ "userwalletservice/internal/service/user"
+	walletServ "userwalletservice/internal/service/wallet"
 )
 
 func main() {
@@ -24,7 +32,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
 
 	// 2. Инициализируем JWT Менеджер (пока хардкодим ключ, потом вынесешь в конфиг)
 	jwtSecret := "super-secret-wallet-key-2026"
@@ -36,20 +43,53 @@ func main() {
 
 	// 🔥 3. Передаем walletRepository третьим аргументом в конструктор сервиса
 	userService := userServ.New(userRepository, jwtManager, walletRepository)
+	walletService := walletServ.New(walletRepository)
 
 	// 4. Собираем слой контроллеров и мидлваров
 	userController := userCtrl.New(userService)
-	walletController := walletCtrl.New(userService)
+	walletController := walletCtrl.New(walletService)
 	authMiddleware := middleware.New(jwtManager)
 
 	// 5. Инициализируем роутер gorilla/mux и настраиваем маршруты
-	r := router.New(userController, walletController, authMiddleware)
-	muxRouter := r.InitRoutes() // Это вернет нам настроенный *mux.Router
+	r := router.New(authMiddleware)
+	muxRouter := r.InitRoutes(userController, walletController) // Это вернет нам настроенный *mux.Router
 
-	log.Println("🚀 Server started on :8080")
-
-	// 6. Запуск сервера
-	if err := http.ListenAndServe(":8080", muxRouter); err != nil {
-		log.Fatalf("server failed to start: %v", err)
+	// 6. Настраиваем конфигурацию HTTP-сервера
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      muxRouter,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// 7. Создаем контекст, который отменится при системных сигналах (Ctrl+C, SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Println("🚀 Server started on :8080")
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server failed to start: %v", err)
+		}
+	}()
+
+	// Ожидаем системный сигнал завершения (код замрёт на этой строке)
+	<-ctx.Done()
+	log.Println("🛑 Shutting down gracefully...")
+
+	// 9. Даем серверу 30 секунд на то, чтобы завершить активные сетевые запросы
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server shutdown error: %v", err)
+	}
+
+	// 10. Только ПОСЛЕ остановки сервера безопасно закрываем соединение с БД
+	if err := db.Close(); err != nil {
+		log.Printf("Database close error: %v", err)
+	}
+
+	log.Println("✅ Server stopped successfully")
 }
