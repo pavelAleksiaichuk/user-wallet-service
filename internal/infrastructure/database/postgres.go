@@ -2,48 +2,51 @@ package database
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+
+	"userwalletservice/internal/config"
 )
 
-func Connect() (*sqlx.DB, error) {
-	host := os.Getenv("DB_HOST")
-	port := os.Getenv("DB_PORT")
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASSWORD")
-	name := os.Getenv("DB_NAME")
-
+// ProvideDB занимается только созданием и настройкой подключения
+func ProvideDB(cfg *config.DB) (*sqlx.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host,
-		port,
-		user,
-		password,
-		name,
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name,
 	)
 
+	db, err := sqlx.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка открытия БД: %v", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("ошибка ping БД: %v", err)
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	return db, nil
+}
+
+// ConnectWithRetry — обёртка, которая скрывает в себе логику повторных попыток
+func ConnectWithRetry(cfg *config.DB) (*sqlx.DB, error) {
 	var db *sqlx.DB
 	var err error
 
-	// 🔥 retry logic
 	for i := range 10 {
-		db, err = sqlx.Connect("postgres", dsn)
+		db, err = ProvideDB(cfg)
 		if err == nil {
-			err = db.Ping()
-			if err == nil {
-				fmt.Println("✅ PostgreSQL connected")
-				db.SetMaxOpenConns(25)
-				db.SetMaxIdleConns(25)
-
-				return db, nil
-			}
+			return db, nil // Успешно подключились — возвращаем базу наружу
 		}
 
-		fmt.Printf("⏳ DB not ready (%v), retrying... attempt: %d\n", err, i+1)
+		log.Printf("⏳ DB not ready (%v), retrying... attempt: %d/10\n", err, i+1)
 		time.Sleep(2 * time.Second)
 	}
 
-	return nil, fmt.Errorf("❌ DB connection failed after 10 retries: %w", err)
+	return nil, fmt.Errorf("all connection attempts failed: %w", err)
 }

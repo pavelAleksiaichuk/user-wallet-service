@@ -2,36 +2,31 @@ package user
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"userwalletservice/internal/infrastructure/jwt"
 	userModel "userwalletservice/internal/model/user"
+	"userwalletservice/internal/repository"
 	userRepository "userwalletservice/internal/repository/user"
-	walletRepository "userwalletservice/internal/repository/wallet"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	ErrInvalidCredentials = errors.New("invalid email or password")
-)
-
 type Service struct {
-	repo             *userRepository.Repository
+	userRepository   *userRepository.Repository
 	jwtManager       *jwt.JWTManager
-	walletRepository walletRepository.Repository // Оставляем только для транзакции в Register
+	walletRepository repository.Wallet // Оставляем только для транзакции в Register
 }
 
-func New(repo *userRepository.Repository, jwtManager *jwt.JWTManager, walletRepository walletRepository.Repository) *Service {
+func New(userRepository *userRepository.Repository, jwtManager *jwt.JWTManager, walletRepository repository.Wallet) *Service {
 	return &Service{
-		repo:             repo,
+		userRepository:   userRepository,
 		jwtManager:       jwtManager,
 		walletRepository: walletRepository,
 	}
 }
 
-func (s *Service) Register(ctx context.Context, email, password string) error {
+func (s *Service) Register(ctx context.Context, email, password string) (userModel.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user := userModel.User{
@@ -39,33 +34,38 @@ func (s *Service) Register(ctx context.Context, email, password string) error {
 	}
 
 	if err := user.Validate(password); err != nil {
-		return err
+		return user, err
 	}
 
 	hashedPassword, err := s.hashPassword(password)
 	if err != nil {
-		return err
+		return user, err
 	}
 	user.PasswordHash = hashedPassword
 
-	if err := s.repo.Register(ctx, &user, s.walletRepository); err != nil {
-		return err
+	// 🔥 1. Убрали & перед user.
+	// 🔥 2. Теперь репозиторий возвращает ID, и мы присваиваем его локальной копии перед return
+	userID, err := s.userRepository.Register(ctx, user, s.walletRepository)
+	if err != nil {
+		return user, err
 	}
 
-	return nil
+	user.ID = userID // Теперь сервис честно возвращает заполненный объект
+
+	return user, nil
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
-	user, err := s.repo.GetUserByEmail(ctx, email)
+	user, err := s.userRepository.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", ErrInvalidCredentials
+		return "", userModel.ErrInvalidCredentials
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		return "", ErrInvalidCredentials
+		return "", userModel.ErrInvalidCredentials
 	}
 
 	token, err := s.jwtManager.GenerateToken(user.ID)
@@ -77,7 +77,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 }
 
 func (s *Service) GetUserByID(ctx context.Context, id int) (*userModel.User, error) {
-	return s.repo.GetByID(ctx, id)
+	return s.userRepository.GetByID(ctx, id)
 }
 
 func (s *Service) hashPassword(password string) (string, error) {

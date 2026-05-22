@@ -2,8 +2,11 @@ package user
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	contextModel "userwalletservice/internal/model/context"
+	userModel "userwalletservice/internal/model/user"
 	userService "userwalletservice/internal/service/user"
 )
 
@@ -15,49 +18,64 @@ func New(userService *userService.Service) *Controller {
 	return &Controller{userService: userService}
 }
 
-type CreateUserRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type UserResponse struct {
-	ID    int    `json:"id"`
-	Email string `json:"email"`
-}
-
 func (c *Controller) RegisterUser(w http.ResponseWriter, r *http.Request) {
-	var req CreateUserRequest
+	var req userModel.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 
-	err := c.userService.Register(r.Context(), req.Email, req.Password)
-	if err != nil {
+	if err := req.Validate(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	createdUser, err := c.userService.Register(r.Context(), req.Email, req.Password)
+	if err != nil {
+		// 🔥 Ошибка берется из userModel
+		if errors.Is(err, userModel.ErrEmailAlreadyExists) {
+			http.Error(w, err.Error(), http.StatusConflict) // 409
+			return
+		}
+
+		log.Printf("failed to register user: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError) // 500
+		return
+	}
+
+	resp := userModel.UserResponse{
+		ID:    createdUser.ID,
+		Email: createdUser.Email,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("user created"))
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (c *Controller) LoginUser(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
+	var req userModel.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "login - invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	ctx := r.Context()
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
+	ctx := r.Context()
 	token, err := c.userService.Login(ctx, req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		// 🔥 Тоже забираем из userModel, если ты её туда перенес
+		if errors.Is(err, userModel.ErrInvalidCredentials) {
+			http.Error(w, "invalid email or password", http.StatusUnauthorized) // 401
+			return
+		}
+
+		log.Printf("failed to login user: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError) // 500
 		return
 	}
 
@@ -75,17 +93,27 @@ func (c *Controller) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := ctx.Value(contextModel.UserIDKey).(int)
 	if !ok {
-		http.Error(w, "unathorized", http.StatusUnauthorized)
+		// 🔥 Логируем для себя критическую ошибку конфигурации, чтобы сразу починить
+		log.Printf("[ERROR] AuthMiddleware missing or failed to set UserIDKey in context for GetProfile")
+
+		// Отдаем 500, так как это баг нашей разработки
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	user, err := c.userService.GetUserByID(ctx, userID)
 	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+		if errors.Is(err, userModel.ErrUserNotFound) {
+			http.Error(w, "user not found", http.StatusNotFound) // 404
+			return
+		}
+
+		log.Printf("failed to get user profile: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError) // 500
 		return
 	}
 
-	resp := UserResponse{
+	resp := userModel.UserResponse{
 		ID:    user.ID,
 		Email: user.Email,
 	}

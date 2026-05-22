@@ -5,21 +5,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-)
 
-var (
-	ErrInvalidToken = errors.New("invalid token")
-	ErrExpiredToken = errors.New("token has expired")
+	"userwalletservice/internal/model/auth" // 🔥 Импортируем модели
 )
 
 type JWTManager struct {
 	secretKey []byte
 	issuer    string
-}
-
-type Claims struct {
-	UserID int `json:"user_id"`
-	jwt.RegisteredClaims
 }
 
 func New(secret string) *JWTManager {
@@ -30,7 +22,8 @@ func New(secret string) *JWTManager {
 }
 
 func (m *JWTManager) GenerateToken(userID int) (string, error) {
-	claims := &Claims{
+	// Инициализируем Claims из пакета моделей
+	claims := &auth.Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
@@ -43,24 +36,25 @@ func (m *JWTManager) GenerateToken(userID int) (string, error) {
 	return token.SignedString(m.secretKey)
 }
 
-func (m *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+// 🔥 Метод теперь возвращает (*auth.Claims, error) из слоя моделей!
+func (m *JWTManager) ValidateToken(tokenString string) (*auth.Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &auth.Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidToken
+			return nil, auth.ErrInvalidToken
 		}
 		return m.secretKey, nil
 	})
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrExpiredToken
+			return nil, auth.ErrExpiredToken
 		}
-		return nil, ErrInvalidToken
+		return nil, auth.ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*Claims)
+	claims, ok := token.Claims.(*auth.Claims)
 	if !ok || !token.Valid {
-		return nil, ErrInvalidToken
+		return nil, auth.ErrInvalidToken
 	}
 
 	return claims, nil

@@ -8,27 +8,19 @@ import (
 	"userwalletservice/internal/model/wallet"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/shopspring/decimal"
 )
 
-type Repository interface {
-	Create(ctx context.Context, userID int) error
-	CreateTx(ctx context.Context, tx *sqlx.Tx, userID int) error // 🔥 ДОБАВИЛИ В ИНТЕРФЕЙС
-	GetByUserID(ctx context.Context, userID int) (*wallet.Wallet, error)
-	Deposit(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error)
-	Withdraw(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error)
-	Transfer(ctx context.Context, fromUserID int, toUserID int, amount float64) error
-}
-
-type WalletRepository struct {
+type Repository struct {
 	db *sqlx.DB
 }
 
-func New(db *sqlx.DB) *WalletRepository {
-	return &WalletRepository{db: db}
+func New(db *sqlx.DB) *Repository {
+	return &Repository{db: db}
 }
 
 // CreateTx — реализация для работы внутри транзакции
-func (r *WalletRepository) CreateTx(ctx context.Context, tx *sqlx.Tx, userID int) error {
+func (r *Repository) CreateTx(ctx context.Context, tx *sqlx.Tx, userID int) error {
 	query := `
 		INSERT INTO wallets (user_id, balance, created_at, updated_at)
 		VALUES ($1, $2, $3, $4)
@@ -39,7 +31,7 @@ func (r *WalletRepository) CreateTx(ctx context.Context, tx *sqlx.Tx, userID int
 }
 
 // Твой метод Create оставим, он полезен для тестов или отдельных вызовов
-func (r *WalletRepository) Create(ctx context.Context, userID int) error {
+func (r *Repository) Create(ctx context.Context, userID int) error {
 	query := `
 		INSERT INTO wallets (user_id, balance, created_at, updated_at)
 		VALUES (:user_id, :balance, :created_at, :updated_at)
@@ -56,7 +48,7 @@ func (r *WalletRepository) Create(ctx context.Context, userID int) error {
 }
 
 // GetByUserID находит кошелек по ID пользователя
-func (r *WalletRepository) GetByUserID(ctx context.Context, userID int) (*wallet.Wallet, error) {
+func (r *Repository) GetByUserID(ctx context.Context, userID int) (*wallet.Wallet, error) {
 	query := `
 		SELECT id, user_id, balance, created_at, updated_at 
 		FROM wallets 
@@ -79,7 +71,7 @@ func (r *WalletRepository) GetByUserID(ctx context.Context, userID int) (*wallet
 	return &w, nil
 }
 
-func (r *WalletRepository) Deposit(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error) {
+func (r *Repository) Deposit(ctx context.Context, userID int, amount decimal.Decimal) (*wallet.Wallet, error) {
 	var w wallet.Wallet
 
 	// Обновляем баланс и сразу запрашиваем обновленные данные через RETURNING
@@ -97,7 +89,7 @@ func (r *WalletRepository) Deposit(ctx context.Context, userID int, amount float
 	return &w, nil
 }
 
-func (r *WalletRepository) Withdraw(ctx context.Context, userID int, amount float64) (*wallet.Wallet, error) {
+func (r *Repository) Withdraw(ctx context.Context, userID int, amount decimal.Decimal) (*wallet.Wallet, error) {
 	var w wallet.Wallet
 
 	// Списываем, только если текущий баланс больше или равен сумме списания
@@ -120,7 +112,7 @@ func (r *WalletRepository) Withdraw(ctx context.Context, userID int, amount floa
 	return &w, nil
 }
 
-func (r *WalletRepository) Transfer(ctx context.Context, fromUserID int, toUserID int, amount float64) error {
+func (r *Repository) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) error {
 	// Начало транзакции
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {

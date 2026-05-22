@@ -2,23 +2,16 @@ package wallet
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	contextModel "userwalletservice/internal/model/context"
+	walletModel "userwalletservice/internal/model/wallet" // Импортируем наши модели
 	walletService "userwalletservice/internal/service/wallet"
 )
 
 type Controller struct {
-	// Нам нужен доступ к сервису пользователей, чтобы вызывать методы кошелька
 	walletService *walletService.Service
-}
-
-type WithdrawRequest struct {
-	Amount float64 `json:"amount"`
-}
-
-type TransferRequest struct {
-	ToUserID int     `json:"to_user_id"`
-	Amount   float64 `json:"amount"`
 }
 
 func New(walletService *walletService.Service) *Controller {
@@ -27,32 +20,35 @@ func New(walletService *walletService.Service) *Controller {
 	}
 }
 
-// GetBalance обрабатывает запрос на получение баланса кошелька
+const timeLayout = "2006-01-02 15:04:05"
+
 func (c *Controller) GetBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// 1. Извлекаем userID, который наш мидлвар (AuthMiddleware) бережно достал из JWT
-	// и сохранил внутри контекста запроса.
+	// 1. Сюда пускает только AuthMiddleware. Если ID нет — это баг нашей разработки (500)
 	userID, ok := r.Context().Value(contextModel.UserIDKey).(int)
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		log.Printf("[ERROR] AuthMiddleware failed to set UserIDKey for GetBalance")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	// 2. Внимание! Нам нужен метод в сервисе, который умеет получать кошелек по userID.
-	// Прямо СЕЙЧАС у нас такого метода в walletService еще нет. Мы напишем его следующим шагом!
 	wallet, err := c.walletService.GetWalletByUserID(r.Context(), userID)
 	if err != nil {
+		if errors.Is(err, walletModel.ErrWalletNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		log.Printf("failed to get wallet balance: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	timeLayout := "2006-01-02 15:04:05"
-
-	// 3. Формируем красивый ответ для фронтенда
-	response := WalletResponse{
+	response := walletModel.WalletResponse{
 		ID:        wallet.ID,
 		UserID:    wallet.UserID,
 		Balance:   wallet.Balance,
@@ -67,38 +63,37 @@ func (c *Controller) GetBalance(w http.ResponseWriter, r *http.Request) {
 func (c *Controller) Deposit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// 1. Достаем userID из контекста (наш проверенный ключ)
 	userID, ok := r.Context().Value(contextModel.UserIDKey).(int)
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		log.Printf("[ERROR] AuthMiddleware failed to set UserIDKey for Deposit")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	// 2. Парсим сумму из тела запроса
-	var req DepositRequest
+	var req walletModel.DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
 		return
 	}
 
-	// 3. Вызываем сервис
-	wallet, err := c.walletService.Deposit(r.Context(), userID, req.Amount) // Сделай вызов под свою структуру сервиса
+	wallet, err := c.walletService.Deposit(r.Context(), userID, req.Amount)
 	if err != nil {
-		// Если ошибка валидации — отдаем 400, если базы — 500
-		if err.Error() == "amount must be greater than zero" {
+		// Проверяем через errors.Is конкретную доменную ошибку
+		if errors.Is(err, walletModel.ErrAmountMustBePositive) {
 			w.WriteHeader(http.StatusBadRequest)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+
+		log.Printf("failed to deposit funds: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	// 4. Форматируем красивый ответ
-	timeLayout := "2006-01-02 15:04:05"
-	response := WalletResponse{
+	response := walletModel.WalletResponse{
 		ID:        wallet.ID,
 		Balance:   wallet.Balance,
 		CreatedAt: wallet.CreatedAt.Format(timeLayout),
@@ -114,12 +109,13 @@ func (c *Controller) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := r.Context().Value(contextModel.UserIDKey).(int)
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		log.Printf("[ERROR] AuthMiddleware failed to set UserIDKey for Withdraw")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	var req WithdrawRequest
+	var req walletModel.WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
@@ -128,17 +124,22 @@ func (c *Controller) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 	wallet, err := c.walletService.Withdraw(r.Context(), userID, req.Amount)
 	if err != nil {
-		if err.Error() == "amount must be greater than zero" || err.Error() == "insufficient funds or wallet not found" {
+		// Заменяем строковое сравнение на errors.Is
+		if errors.Is(err, walletModel.ErrAmountMustBePositive) ||
+			errors.Is(err, walletModel.ErrInsufficientFunds) ||
+			errors.Is(err, walletModel.ErrWalletNotFound) {
 			w.WriteHeader(http.StatusBadRequest)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+
+		log.Printf("failed to withdraw funds: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	timeLayout := "2006-01-02 15:04:05"
-	response := WalletResponse{
+	response := walletModel.WalletResponse{
 		ID:        wallet.ID,
 		UserID:    wallet.UserID,
 		Balance:   wallet.Balance,
@@ -155,12 +156,13 @@ func (c *Controller) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	fromUserID, ok := r.Context().Value(contextModel.UserIDKey).(int)
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		log.Printf("[ERROR] AuthMiddleware failed to set UserIDKey for Transfer")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	var req TransferRequest
+	var req walletModel.TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
@@ -169,8 +171,19 @@ func (c *Controller) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	err := c.walletService.Transfer(r.Context(), fromUserID, req.ToUserID, req.Amount)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		// Ошибки перевода (себе нельзя, не хватает денег, сумма <= 0) — это 400 Bad Request
+		if errors.Is(err, walletModel.ErrAmountMustBePositive) ||
+			errors.Is(err, walletModel.ErrInsufficientFunds) ||
+			errors.Is(err, walletModel.ErrTransferToSameUser) ||
+			errors.Is(err, walletModel.ErrWalletNotFound) {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		log.Printf("failed to transfer funds from user %v to %v: %v", fromUserID, req.ToUserID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 

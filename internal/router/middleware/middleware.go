@@ -44,7 +44,7 @@ func (m *AuthMiddleware) Handler(next http.Handler) http.Handler {
 
 		// 4. Записываем UserID в контекст запроса, чтобы контроллеры кошелька знали, кто делает запрос
 		ctx := context.WithValue(r.Context(), contextModel.UserIDKey, claims.UserID)
-		
+
 		// 5. Передаем запрос дальше по цепочке
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

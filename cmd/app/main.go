@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"userwalletservice/internal/config"
 	"userwalletservice/internal/infrastructure/database"
 	"userwalletservice/internal/infrastructure/jwt"
 	"userwalletservice/internal/router"
@@ -29,15 +30,19 @@ import (
 )
 
 func main() {
-	// 1. Подключение к БД
-	db, err := database.Connect()
+	cfg := config.New()
+
+	// 1. Подключение к БД с автоматическим ретраем
+	db, err := database.ConnectWithRetry(&cfg.DB)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
+	defer db.Close()
+
+	log.Println("✅ PostgreSQL connected successfully")
 
 	// 2. Инициализируем JWT Менеджер (пока хардкодим ключ, потом вынесешь в конфиг)
-	jwtSecret := "super-secret-wallet-key-2026"
-	jwtManager := jwt.New(jwtSecret)
+	jwtManager := jwt.New(cfg.JWTSecret)
 
 	// 3. Собираем слой репозиториев и сервисов
 	userRepository := userRepository.New(db)

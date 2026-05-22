@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	walletModel "userwalletservice/internal/model/wallet"
-	walletRepository "userwalletservice/internal/repository/wallet"
+	"userwalletservice/internal/repository"
+
+	"github.com/shopspring/decimal"
 )
 
 type Service struct {
-	walletRepository walletRepository.Repository
+	walletRepository repository.Wallet
 }
 
 // New — конструктор сервиса кошельков
-func New(walletRepository walletRepository.Repository) *Service {
+func New(walletRepository repository.Wallet) *Service {
 	return &Service{
 		walletRepository: walletRepository,
 	}
@@ -24,24 +26,24 @@ func (s *Service) GetWalletByUserID(ctx context.Context, userID int) (*walletMod
 }
 
 // Deposit пополняет баланс
-func (s *Service) Deposit(ctx context.Context, userID int, amount float64) (*walletModel.Wallet, error) {
-	if amount <= 0 {
+func (s *Service) Deposit(ctx context.Context, userID int, amount decimal.Decimal) (*walletModel.Wallet, error) {
+	if !amount.IsPositive() {
 		return nil, errors.New("amount must be greater than zero")
 	}
 	return s.walletRepository.Deposit(ctx, userID, amount)
 }
 
 // Withdraw списывает средства
-func (s *Service) Withdraw(ctx context.Context, userID int, amount float64) (*walletModel.Wallet, error) {
-	if amount <= 0 {
+func (s *Service) Withdraw(ctx context.Context, userID int, amount decimal.Decimal) (*walletModel.Wallet, error) {
+	if !amount.IsPositive() {
 		return nil, errors.New("amount must be greater than zero")
 	}
 	return s.walletRepository.Withdraw(ctx, userID, amount)
 }
 
 // Transfer переводит деньги от одного юзера другому
-func (s *Service) Transfer(ctx context.Context, fromUserID int, toUserID int, amount float64) error {
-	if amount <= 0 {
+func (s *Service) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) error {
+	if !amount.IsPositive() {
 		return errors.New("amount must be greater than zero")
 	}
 	if fromUserID == toUserID {
