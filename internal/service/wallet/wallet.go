@@ -41,13 +41,21 @@ func (s *Service) Withdraw(ctx context.Context, userID int, amount decimal.Decim
 	return s.walletRepository.Withdraw(ctx, userID, amount)
 }
 
-// Transfer переводит деньги от одного юзера другому
-func (s *Service) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) error {
+// Transfer переводит деньги от одного юзера другому и возвращает новый баланс отправителя
+func (s *Service) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) (decimal.Decimal, error) {
 	if !amount.IsPositive() {
-		return errors.New("amount must be greater than zero")
+		return decimal.Zero, errors.New("amount must be greater than zero")
 	}
 	if fromUserID == toUserID {
-		return errors.New("cannot transfer money to yourself")
+		return decimal.Zero, errors.New("cannot transfer money to yourself")
 	}
-	return s.walletRepository.Transfer(ctx, fromUserID, toUserID, amount)
+
+	// Ловим структуру *walletModel.Wallet, которую отдаёт обновленный репозиторий
+	senderWallet, err := s.walletRepository.Transfer(ctx, fromUserID, toUserID, amount)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// Возвращаем конкретно поле Balance типа decimal.Decimal
+	return senderWallet.Balance, nil
 }

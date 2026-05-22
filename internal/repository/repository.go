@@ -14,5 +14,5 @@ type Wallet interface {
 	GetByUserID(ctx context.Context, userID int) (*wallet.Wallet, error)
 	Deposit(ctx context.Context, userID int, amount decimal.Decimal) (*wallet.Wallet, error)
 	Withdraw(ctx context.Context, userID int, amount decimal.Decimal) (*wallet.Wallet, error)
-	Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) error
+	Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) (*wallet.Wallet, error)
 }

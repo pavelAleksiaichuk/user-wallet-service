@@ -112,35 +112,35 @@ func (r *Repository) Withdraw(ctx context.Context, userID int, amount decimal.De
 	return &w, nil
 }
 
-func (r *Repository) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) error {
-	// Начало транзакции
+// Меняем возвращаемые значения на (*wallet.Wallet, error)
+func (r *Repository) Transfer(ctx context.Context, fromUserID int, toUserID int, amount decimal.Decimal) (*wallet.Wallet, error) {
+	// Начало транзакции через sqlx
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Если где-то произойдет паника или непредвиденный return,
-	// Rollback автоматически отменит незавершенную транзакцию
+	// Авто-откат при панике или ошибке
 	defer tx.Rollback()
 
-	// 1. Списываем деньги у отправителя
+	// Переменная, куда зальётся обновленный кошелек отправителя
+	var senderWallet wallet.Wallet
+
+	// 1. Списываем деньги у отправителя и СРАЗУ возвращаем всю структуру кошелька
 	withdrawQuery := `
 		UPDATE wallets 
 		SET balance = balance - $1, updated_at = NOW() 
-		WHERE user_id = $2 AND balance >= $1`
+		WHERE user_id = $2 AND balance >= $1
+		RETURNING id, user_id, balance, created_at, updated_at`
 
-	res, err := tx.ExecContext(ctx, withdrawQuery, amount, fromUserID)
+	// Магия sqlx: tx.GetContext выполнит запрос и сам заполнит senderWallet
+	err = tx.GetContext(ctx, &senderWallet, withdrawQuery, amount, fromUserID)
 	if err != nil {
-		return err
-	}
-
-	// Проверяем, обновилась ли строка (хватило ли денег)
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rowsAffected == 0 {
-		return errors.New("insufficient funds or sender wallet not found")
+		// Если денег не хватило или юзер не найден, sqlx вернет sql.ErrNoRows
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("insufficient funds or sender wallet not found")
+		}
+		return nil, err
 	}
 
 	// 2. Начисляем деньги получателю
@@ -149,20 +149,25 @@ func (r *Repository) Transfer(ctx context.Context, fromUserID int, toUserID int,
 		SET balance = balance + $1, updated_at = NOW() 
 		WHERE user_id = $2`
 
-	res, err = tx.ExecContext(ctx, depositQuery, amount, toUserID)
+	res, err := tx.ExecContext(ctx, depositQuery, amount, toUserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Проверяем, существует ли вообще кошелек получателя
-	rowsAffected, err = res.RowsAffected()
+	rowsAffected, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rowsAffected == 0 {
-		return errors.New("recipient wallet not found")
+		return nil, errors.New("recipient wallet not found")
 	}
 
-	// Если оба запроса прошли успешно — сохраняем изменения намертво
-	return tx.Commit()
+	// Коммитим транзакцию
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// Возвращаем указатель на обновленный кошелек отправителя
+	return &senderWallet, nil
 }

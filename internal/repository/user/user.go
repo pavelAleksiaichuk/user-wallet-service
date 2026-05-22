@@ -9,6 +9,7 @@ import (
 	"userwalletservice/internal/repository"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type Repository struct {
@@ -32,6 +33,12 @@ func (r *Repository) Register(ctx context.Context, user userModel.User, walletRe
 
 	err = tx.QueryRowxContext(ctx, query, user.Email, user.PasswordHash).Scan(&userID)
 	if err != nil {
+		// 🔥 Проверяем, является ли ошибка нарушением уникальности (Duplicate Key)
+		if pqErr, ok := err.(*pq.Error); ok {
+			if pqErr.Code == "23505" { // "23505" — код уникального констрейнта в Postgres
+				return 0, userModel.ErrEmailAlreadyExists // Возвращаем чистую бизнес-ошибку
+			}
+		}
 		return 0, fmt.Errorf("register user insert: %w", err)
 	}
 
@@ -43,7 +50,7 @@ func (r *Repository) Register(ctx context.Context, user userModel.User, walletRe
 		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return userID, nil // 🔥 Возвращаем сгенерированный базой ID наружу
+	return userID, nil
 }
 
 func (r *Repository) GetByID(ctx context.Context, id int) (*userModel.User, error) {

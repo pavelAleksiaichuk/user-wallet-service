@@ -169,7 +169,8 @@ func (c *Controller) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := c.walletService.Transfer(r.Context(), fromUserID, req.ToUserID, req.Amount)
+	// Фиксим компилятор: ловим и новый баланс, и ошибку
+	newBalance, err := c.walletService.Transfer(r.Context(), fromUserID, req.ToUserID, req.Amount)
 	if err != nil {
 		// Ошибки перевода (себе нельзя, не хватает денег, сумма <= 0) — это 400 Bad Request
 		if errors.Is(err, walletModel.ErrAmountMustBePositive) ||
@@ -187,6 +188,16 @@ func (c *Controller) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Создаем структуру для красивого ответа фронтенду
+	// Можно объявить её прямо тут (анонимная структура), чтобы не засорять глобальную область
+	response := struct {
+		Status           string `json:"status"`
+		SenderNewBalance string `json:"sender_new_balance"`
+	}{
+		Status:           "SUCCESS",
+		SenderNewBalance: newBalance.String(), // Переводим decimal.Decimal в строку
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "transfer completed successfully"})
+	json.NewEncoder(w).Encode(response)
 }
