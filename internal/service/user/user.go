@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"userwalletservice/internal/infrastructure/jwt"
+	"userwalletservice/internal/infrastructure"
 	userModel "userwalletservice/internal/model/user"
 	"userwalletservice/internal/repository"
 	userRepository "userwalletservice/internal/repository/user"
@@ -14,11 +14,11 @@ import (
 
 type Service struct {
 	userRepository   *userRepository.Repository
-	jwtManager       *jwt.JWTManager
+	jwtManager       infrastructure.TokenManager
 	walletRepository repository.Wallet // Оставляем только для транзакции в Register
 }
 
-func New(userRepository *userRepository.Repository, jwtManager *jwt.JWTManager, walletRepository repository.Wallet) *Service {
+func New(userRepository *userRepository.Repository, jwtManager infrastructure.TokenManager, walletRepository repository.Wallet) *Service {
 	return &Service{
 		userRepository:   userRepository,
 		jwtManager:       jwtManager,
@@ -76,7 +76,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 	return token, nil
 }
 
-func (s *Service) GetUserByID(ctx context.Context, id int) (*userModel.User, error) {
+func (s *Service) GetUserByID(ctx context.Context, id int) (userModel.User, error) {
 	return s.userRepository.GetByID(ctx, id)
 }
 

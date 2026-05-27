@@ -53,32 +53,32 @@ func (r *Repository) Register(ctx context.Context, user userModel.User, walletRe
 	return userID, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int) (*userModel.User, error) {
+func (r *Repository) GetByID(ctx context.Context, id int) (userModel.User, error) {
 	var user userModel.User
 	query := `SELECT id, email, password_hash FROM users WHERE id=$1`
 
 	err := r.db.GetContext(ctx, &user, query, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, userModel.ErrUserNotFound
+			return userModel.User{}, userModel.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("get user by id: %w", err)
+		return userModel.User{}, fmt.Errorf("get user by id: %w", err)
 	}
 
-	return &user, nil
+	return user, nil
 }
 
-func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*userModel.User, error) {
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (userModel.User, error) {
 	var user userModel.User
 	query := `SELECT id, email, password_hash FROM users WHERE email=$1`
 
 	err := r.db.GetContext(ctx, &user, query, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, userModel.ErrUserNotFound
+			return userModel.User{}, userModel.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("get user by email: %w", err)
+		return userModel.User{}, fmt.Errorf("get user by email: %w", err)
 	}
 
-	return &user, nil
+	return user, nil
 }

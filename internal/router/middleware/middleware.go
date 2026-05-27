@@ -4,15 +4,15 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"userwalletservice/internal/infrastructure/jwt"
+	"userwalletservice/internal/infrastructure"
 	contextModel "userwalletservice/internal/model/context"
 )
 
 type AuthMiddleware struct {
-	jwtManager *jwt.JWTManager
+	jwtManager infrastructure.TokenManager
 }
 
-func New(jwtManager *jwt.JWTManager) *AuthMiddleware {
+func New(jwtManager infrastructure.TokenManager) *AuthMiddleware {
 	return &AuthMiddleware{jwtManager: jwtManager}
 }
 
