@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   app:
     build: .
@@ -9,11 +7,12 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     volumes:
       - .:/app
-    command: sh -c "go run cmd/main.go"
+    command: sh -c "go run cmd/app/main.go"
 
   db:
     image: postgres:16
@@ -28,17 +27,25 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   migrate:
     image: migrate/migrate
     container_name: migrate
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     volumes:
       - ./migrations:/migrations
     entrypoint: [
       "migrate",
       "-path", "/migrations",
-      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
+      "-database",
+      "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
       "up"
     ]
 
